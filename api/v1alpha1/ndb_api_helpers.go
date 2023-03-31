@@ -171,7 +171,7 @@ func GetNoneTimeMachineSLA(ctx context.Context, ndbclient *ndbclient.NDBClient) 
 
 // Fetches all the profiles and returns a map of OOB profiles
 // Returns an error if one or more OOB profiles is not found
-func GetOOBProfiles(ctx context.Context, ndbclient *ndbclient.NDBClient, dbType string) (profileMap map[string]ProfileResponse, err error) {
+func GetOOBProfiles(ctx context.Context, ndbclient *ndbclient.NDBClient, dbType string, softwareProfileName, computeProfileName, networkProfileName, storageProfileName, dbParamProfileName string) (profileMap map[string]ProfileResponse, err error) {
 	// Map of profile type to profiles
 	profileMap = make(map[string]ProfileResponse)
 
@@ -184,15 +184,56 @@ func GetOOBProfiles(ctx context.Context, ndbclient *ndbclient.NDBClient, dbType 
 	genericProfiles := util.Filter(profiles, func(p ProfileResponse) bool { return p.EngineType == DATABASE_ENGINE_TYPE_GENERIC })
 	dbEngineSpecificProfiles := util.Filter(profiles, func(p ProfileResponse) bool { return p.EngineType == GetDatabaseEngineName(dbType) })
 
-	// Specifying the usage of small compute profiles
-	computeProfiles := util.Filter(genericProfiles, func(p ProfileResponse) bool {
-		return p.Type == PROFILE_TYPE_COMPUTE && strings.Contains(strings.ToLower(p.Name), "small")
-	})
-	storageProfiles := util.Filter(genericProfiles, func(p ProfileResponse) bool { return p.Type == PROFILE_TYPE_STORAGE })
-	// Specifying the usage of single instance topoplogy
-	softwareProfiles := util.Filter(dbEngineSpecificProfiles, func(p ProfileResponse) bool { return p.Type == PROFILE_TYPE_SOFTWARE && p.Topology == TOPOLOGY_SINGLE })
-	networkProfiles := util.Filter(dbEngineSpecificProfiles, func(p ProfileResponse) bool { return p.Type == PROFILE_TYPE_NETWORK })
-	dbParamProfiles := util.Filter(dbEngineSpecificProfiles, func(p ProfileResponse) bool { return p.Type == PROFILE_TYPE_DATABASE_PARAMETER })
+	// Specifying the usage of small compute profiles if not specified
+	var computeProfiles []ProfileResponse
+	if computeProfileName != "" {
+		computeProfiles = util.Filter(genericProfiles, func(p ProfileResponse) bool {
+			return p.Type == PROFILE_TYPE_COMPUTE && p.Name == computeProfileName
+		})
+	} else {
+		computeProfiles = util.Filter(genericProfiles, func(p ProfileResponse) bool {
+			return p.Type == PROFILE_TYPE_COMPUTE && strings.Contains(strings.ToLower(p.Name), "small")
+		})
+	}
+
+	// Specifying the usage of single instance topoplogy if not specified
+	var softwareProfiles []ProfileResponse
+	if softwareProfileName != "" {
+		softwareProfiles = util.Filter(dbEngineSpecificProfiles, func(p ProfileResponse) bool {
+			return p.Type == PROFILE_TYPE_SOFTWARE && p.Name == softwareProfileName
+		})
+	} else {
+		softwareProfiles = util.Filter(dbEngineSpecificProfiles, func(p ProfileResponse) bool {
+			return p.Type == PROFILE_TYPE_SOFTWARE && p.Topology == TOPOLOGY_SINGLE
+		})
+	}
+
+	var networkProfiles []ProfileResponse
+	if networkProfileName != "" {
+		networkProfiles = util.Filter(dbEngineSpecificProfiles, func(p ProfileResponse) bool {
+			return p.Type == PROFILE_TYPE_NETWORK && p.Name == networkProfileName
+		})
+	} else {
+		networkProfiles = dbEngineSpecificProfiles
+	}
+
+	var storageProfiles []ProfileResponse
+	if storageProfileName != "" {
+		storageProfiles = util.Filter(genericProfiles, func(p ProfileResponse) bool {
+			return p.Type == PROFILE_TYPE_STORAGE && p.Name == storageProfileName
+		})
+	} else {
+		storageProfiles = genericProfiles
+	}
+
+	var dbParamProfiles []ProfileResponse
+	if dbParamProfileName != "" {
+		dbParamProfiles = util.Filter(dbEngineSpecificProfiles, func(p ProfileResponse) bool {
+			return p.Type == PROFILE_TYPE_DATABASE_PARAMETER && p.Name == dbParamProfileName
+		})
+	} else {
+		dbParamProfiles = dbEngineSpecificProfiles
+	}
 
 	// Some profile not found, return an error
 	if len(computeProfiles) == 0 || len(softwareProfiles) == 0 || len(storageProfiles) == 0 || len(networkProfiles) == 0 || len(dbParamProfiles) == 0 {
@@ -208,6 +249,7 @@ func GetOOBProfiles(ctx context.Context, ndbclient *ndbclient.NDBClient, dbType 
 
 	return
 }
+
 
 func GetDatabaseEngineName(dbType string) string {
 	switch dbType {
